@@ -149,6 +149,7 @@ schedule_min = one_in_sixty(schedule)
 light_schedule_min = one_in_sixty(light_schedule)
 vav_schedule_min = one_in_sixty(vav_schedule)
 
+# pid control
 # init e0,es, in ct0 ta0, out ct1
 def pid_control(schedule, target, setpoint, control0, p,i,d, e0, es, control_max = 1, control_min = 0):
     if schedule == 0:
@@ -280,13 +281,13 @@ for step in range(1380):
 
     ### duct pressure balance
     # cv = g / √pδp /cv_k
-    if vav_cv1 == 0 or vav_schedule_min[step] == 0:
+    if vav_cv0 == 0 or vav_schedule_min[step] == 0:
         g0 = 0
         p_duct = 0
         p_vav = 0
         p_end = 0
     else:
-        [g0,p_duct,p_vav,p_end] = duct_balance(vav_cv1,fan_inv,s1,se1,cv_k)
+        [g0,p_duct,p_vav,p_end] = duct_balance(vav_cv0,fan_inv,s1,se1,cv_k)
     #print(g0,p_duct,p_vav,p_end)
     supply_air_G = g0
 

@@ -34,9 +34,9 @@ schedule = [0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0]
 wall_delay = [0.1,0.18,0.16,0.13,0.1,0.08,0.06,0.05,0.04,0.03,0.025,0.02,0.015,0.01,0,0,0,0,0,0,0,0,0,0]
 wall_delay_indoor = [0.15,0.24,0.20,0.18,0.10,0.07,0.04,0.02,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
 
-pid_p = 0.01
-pid_i = 0.00001
-pid_d = 0.5
+vav_01_pid_p = 0.01
+vav_01_pid_i = 0.00001
+vav_01_pid_d = 0
 fan_inv_p = 1
 fan_inv_i = 0.0001
 fan_inv_d = 0.02
@@ -132,6 +132,7 @@ def one_in_sixty(one):
         temp = np.linspace(one[i],one[i+1],60)
         sixty = np.concatenate((sixty,temp),axis=0)
     return sixty
+
 # temp hour in min
 out_temp_min = one_in_sixty(out_temp)
 side_room_temp_min = one_in_sixty(side_room_temp)
@@ -148,10 +149,18 @@ schedule_min = one_in_sixty(schedule)
 light_schedule_min = one_in_sixty(light_schedule)
 vav_schedule_min = one_in_sixty(vav_schedule)
 
-hours = np.linspace(1,24,24)
-weekday = np.linspace(1,7,7)
-#for i in range(1380):
-#    print(wall_delay_min[i])
+# init e0,es, in ct0 ta0, out ct1
+def pid_control(schedule, target, setpoint, control0, p,i,d, e0, es, control_max = 1, control_min = 0):
+    if schedule == 0:
+        return(control0,0,0)
+    else:
+        e = target - setpoint
+        de = e - e0
+        if de * e <= 0:
+            de = 0
+        es += e
+        control = max(min(control0 + e * p + es * i + de * d, control_max), control_min)
+        return (control, e, es)
 
 # init
 indoor_temp = 26
@@ -160,10 +169,9 @@ load_stun_indoor = [0] * 1440
 supply_air_G = 2500
 supply_air_temp = 18
 
-vav_cv0 = 0.5
-pid_es = 0
-pid_ds = 0
-pid_e0 = 0
+vav_cv0 = 0
+vav_01_pid_e0 = 0
+vav_01_pid_es = 0
 
 p_end = 30
 p_es = 0
@@ -222,6 +230,10 @@ for step in range(1380):
     #print(load_sum, vav_capicity, delta_temp, indoor_temp)
 
     ### vav valve pid
+    [vav_cv0, vav_01_pid_e0, vav_01_pid_es] = pid_control(
+        vav_schedule_min[step], indoor_temp, indoor_temp_set, vav_cv0,vav_01_pid_p,
+        vav_01_pid_i, vav_01_pid_d, vav_01_pid_e0, vav_01_pid_es)
+    '''
     # error
     pid_e = indoor_temp - indoor_temp_set
     pid_de = pid_e - pid_e0
@@ -238,17 +250,16 @@ for step in range(1380):
     pid_es += pid_e
     # valve
     vav_cv1 = min(max(vav_cv0 + pid_e * pid_p + pid_es * pid_i - pid_ds * pid_d,0),1)
-    '''
     # G
     if vav_cv0 == 0:
         supply_air_G = 0
     else:
         supply_air_G = 4000 * vav_cv1
-    '''
     # last_init
     vav_cv0 = vav_cv1
     pid_e0 = pid_e
     #print(indoor_temp)
+    '''
 
     # fan_inv_pid
     # setpoint p_end = 30

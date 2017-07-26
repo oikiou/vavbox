@@ -38,7 +38,7 @@ wall_delay_indoor = [0.15, 0.24, 0.20, 0.18, 0.10, 0.07, 0.04, 0.02, 0, 0, 0, 0,
 vav_01_pid_p = 0.02
 vav_01_pid_i = 0.00001
 vav_01_pid_d = 0
-fan_inv_p = 0.1
+fan_inv_p = 0.001
 fan_inv_i = 0.0001
 fan_inv_d = 0
 
@@ -66,40 +66,100 @@ equipment_rate = 20
 equipment_schedule = schedule
 
 vav_schedule = [0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0]
-vav_schedule = [0] * 24  # for natural indoor air temp
+# vav_schedule = [0] * 24  # for natural indoor air temp
 
-# fan parameter
-g_p_75 = [[0, 200], [3000, 150], [6000, 0]]
-fan_inv = 75
-g_p = [[0, 8/3], [3000, 2], [6000, 0]]
-g_p_c = g_p[0][1]
-g_p_a = (2 * (g_p[1][1] - g_p_c) + g_p_c) / (2 * g_p[1][0] * g_p[1][0] - g_p[2][0] * g_p[2][0])
-g_p_b = (g_p[1][1] - g_p_c - g_p_a * g_p[1][0] * g_p[1][0]) / g_p[1][0]
-g1 = []
-p1 = []
+
+# ## 风机特性
+# 任意三点求二次曲线
+def three_to_performance(x1, y1, x2, y2, x3, y3):
+    x = np.mat([[1,x1,x1*x1],[1,x2,x2*x2],[1,x3,x3*x3]])
+    y = np.mat([y1,y2,y3])
+    return np.reshape(x.I * y.T,[-1,1])
+
+
+# 特定频率下的三个工况点求水泵、风机特性曲线
+# pump fan performance characteristics
+def performance_characteristics(inv, x1, y1, x2, y2, x3, y3):
+    return three_to_performance(x1, y1/inv, x2, y2/inv, x3, y3/inv)
+
+# 1号风机的特性曲线
+fan_1_performance = performance_characteristics(0.75, 0, 200, 3000, 150, 6000, 0)
+
+
+# 利用风机特性曲线，求压力
+def g_to_p_fan(g, inv, performance):
+    g1 = [1, g, g*g]
+    return (g1 * performance * inv).tolist()[0][0]
+
+# 特性曲线图
+x_pump1 = np.linspace(0,6000,50)
+y_pump1 = []
 for i in range(50):
-    g = np.linspace(0, 6000, 50)
-    p = fan_inv * (g_p_a * g * g + g_p_b * g + g_p_c)
-    g1.append(g)
-    p1.append(p)
-# plt.plot(g,p)
+    y_pump1.append(g_to_p_fan(x_pump1[i], 0.75, fan_1_performance))
+# plt.plot(x,y)
 # plt.show()
 
 
-def cal_p_by_g_fan(g, e=fan_inv, a=g_p_a, b=g_p_b, c=g_p_c):
-    return e * (a * g * g + b * g + c)
+# ## 管路平衡
+# 流量算VAV前压力
+def cal_g1_to_p1(g, se, cv, k):
+    return 0.5 * (se * g * g + math.sqrt(se * g * g * se * g * g + 4 * g * g / cv / cv / k))
 
 
-def cal_p1(a, b, c):
-    return (-b + math.sqrt(b * b - 4 * a * c)) / 2 / a
+# 算末端压力
+def cal_p_end(g, cv, k, p1):
+    return p1 - g * g / cv / cv / k / p1
 
 
+# 流量算支管压差
+def cal_g1_to_p0(g, s, se, cv, k):
+    return cal_g1_to_p1(g, se, cv, k) + s * g * g
+
+
+# 压差算支管流量
+def cal_p0_to_g2(p0, s, se, cv, k):
+    return math.sqrt((2 * p0 * s + se * p0 + 1 / cv / cv / k - math.sqrt((2 * p0 * s + se * p0 + 1 / cv / cv / k) *
+        (2 * p0 * s + se * p0 + 1 / cv / cv / k) - 4 * (s * s + s * se) * p0 * p0))/(2 * (s * s + s * se)))
+
+# duct balance
+s1 = 0.000005
+se1 = 0.000003
+cv_k = 5000
+
+
+# 风机特性算压力
+def f_gp_fan(g):
+    return g_to_p_fan(g, fan_inv, fan_1_performance)
+
+
+# 配管特性算压力
+def f_gp_duct(g):
+    result = cal_g1_to_p0(g, s1, se1, vav_cv, cv_k)
+    return result
+
+
+# 二分法
+def two_solve(maxx, minx, f1, f2, e):
+    x0 = 1/2 * maxx + 1/2 * minx
+    y1 = f1(x0)
+    y2 = f2(x0)
+    # print(x0,y1,y2)
+    if math.fabs(y1 - y2) < e:
+        return x0,y1,y2
+    else:
+        if y1 < y2:
+            maxx = x0
+        else:
+            minx = x0
+        return two_solve(maxx, minx, f1, f2, e)
+
+'''
 def duct_balance(cv, inv, s, se, k):
     g_max = 6000
     g_min = 0
     g0 = 0.5 * (g_max + g_min)
     for i in range(100):
-        # p = cal_p_by_g_fan
+        # p = g_to_p
         # p = p1 + s1 * g * g
         # p1 = se1 * g * g + g * g / cv / cv / cv_k / p1
         p1_a = 1
@@ -107,7 +167,7 @@ def duct_balance(cv, inv, s, se, k):
         p1_c = - g0 * g0 / cv / cv / k
         p1 = cal_p1(p1_a, p1_b, p1_c)
         p_duct = p1 + s * g0 * g0
-        error_p = p_duct - cal_p_by_g_fan(g0,inv)
+        error_p = p_duct - g_to_p(g0,inv/100,fan_1_performance)
         if error_p < 0.01 and error_p > -0.01:
             break
         if error_p > 0:
@@ -120,11 +180,7 @@ def duct_balance(cv, inv, s, se, k):
     dp = g0 * g0 / cv / cv / k / p1
     p_end = p1 - dp
     return g0, p_duct, dp, p_end
-
-# duct balance
-s1 = 0.000005
-se1 = 0.000003
-cv_k = 5000
+'''
 
 
 # pre
@@ -254,11 +310,11 @@ for step in range(1440):
 
     # ## room_air_temp
     # vav (no control) control later
-    vav_capicity = (indoor_temp_set - supply_air_temp) * supply_air_G * c_air * rou_air / 3.6 * vav_schedule_min[step]
+    vav_capicity = (indoor_temp - supply_air_temp) * supply_air_G * c_air * rou_air / 3.6 * vav_schedule_min[step]
     delta_temp = (load_sum - vav_capicity) / rou_air / c_air / ground_area / wall_height / 1000 * 60
     indoor_temp = indoor_temp + delta_temp
-    print(load_wall,load_sun,load_window,load_wall_indoor,load_human,load_equipment,load_light,load_sum,
-          out_temp_min[step], delta_temp, indoor_temp)
+    # print(load_wall,load_sun,load_window,load_wall_indoor,load_human,load_equipment,load_light,load_sum,
+          # out_temp_min[step], delta_temp, indoor_temp)
 
     # ## vav valve pid
     [vav_cv, vav_01_pid_e0, vav_01_pid_es] = pid_control(
@@ -310,23 +366,31 @@ for step in range(1440):
     '''
 
     # fan_inv_pid
+    # pid 控制策略有问题
     [fan_inv, fan_inv_pid_e0, fan_inv_pid_es] = pid_control(
         vav_schedule_min[step], p_end, p_end_setpoint, fan_inv, fan_inv_p, fan_inv_i, fan_inv_d,
-        fan_inv_pid_e0, fan_inv_pid_es, control_max=100, control_min=0, tf=-1)
+        fan_inv_pid_e0, fan_inv_pid_es, control_max=1, control_min=0, tf=-1)
 
     # ## duct pressure balance
     # cv = g / √pδp /cv_k
+
     if vav_cv == 0 or vav_schedule_min[step] == 0:
-        g0 = 0
+        supply_air_G = 0
         p_duct = 0
         p_vav = 0
         p_end = 0
     else:
-        [g0, p_duct, p_vav, p_end] = duct_balance(vav_cv, fan_inv, s1, se1, cv_k)
+        # [g0, p_duct, p_vav, p_end] = duct_balance(vav_cv, fan_inv, s1, se1, cv_k)
+        supply_air_G, supply_air_p, p_check = two_solve(6000, 0, f_gp_fan, f_gp_duct, 0.1)
+        p_duct = supply_air_p
+        p_vav = cal_g1_to_p0(supply_air_G, s1, se1, vav_cv, cv_k)
+        p_end = cal_p_end(supply_air_G, vav_cv, cv_k, p_vav)
+    # print(supply_air_G)
     # print(g0,p_duct,p_vav,p_end)
-    supply_air_G = g0
+    # supply_air_G = g0
 
-    # print(p_end,indoor_temp,supply_air_G,fan_inv,vav_cv)
+    print(p_end,indoor_temp,supply_air_G,fan_inv,vav_cv)
+
     # print(indoor_temp)
 
     # ## TO DO LIST

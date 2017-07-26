@@ -38,7 +38,7 @@ wall_delay_indoor = [0.15, 0.24, 0.20, 0.18, 0.10, 0.07, 0.04, 0.02, 0, 0, 0, 0,
 vav_01_pid_p = 0.02
 vav_01_pid_i = 0.00001
 vav_01_pid_d = 0
-fan_inv_p = 0.001
+fan_inv_p = 0.01
 fan_inv_i = 0.0001
 fan_inv_d = 0
 
@@ -138,19 +138,19 @@ def f_gp_duct(g):
     return result
 
 
-# 二分法
+# 二分法求两个函数的交点
 def two_solve(maxx, minx, f1, f2, e):
-    x0 = 1/2 * maxx + 1/2 * minx
-    y1 = f1(x0)
-    y2 = f2(x0)
-    # print(x0,y1,y2)
+    x = 1/2 * maxx + 1/2 * minx
+    y1 = f1(x)
+    y2 = f2(x)
+    # print(x,y1,y2)
     if math.fabs(y1 - y2) < e:
-        return x0,y1,y2
+        return x,y1,y2
     else:
         if y1 < y2:
-            maxx = x0
+            maxx = x
         else:
-            minx = x0
+            minx = x
         return two_solve(maxx, minx, f1, f2, e)
 
 '''
@@ -234,7 +234,7 @@ vav_schedule_min = one_in_sixty(vav_schedule)
 
 # pid control
 # init e0,es, in ct0 ta0, out ct1
-def pid_control(schedule, target, setpoint, control0, p, i, d, e0, es, control_max=1, control_min=0, tf=1):
+def pid_control(schedule, target, setpoint, control0, p, i, d, e0, es, control_max=1.0, control_min=0.0, tf=1):
     if schedule == 0:
         return 0, 0, 0
     else:
@@ -317,9 +317,8 @@ for step in range(1440):
           # out_temp_min[step], delta_temp, indoor_temp)
 
     # ## vav valve pid
-    [vav_cv, vav_01_pid_e0, vav_01_pid_es] = pid_control(
-        vav_schedule_min[step], indoor_temp, indoor_temp_set, vav_cv, vav_01_pid_p,
-        vav_01_pid_i, vav_01_pid_d, vav_01_pid_e0, vav_01_pid_es)
+    [vav_cv, vav_01_pid_e0, vav_01_pid_es] = pid_control(vav_schedule_min[step], indoor_temp, indoor_temp_set,
+                                vav_cv, vav_01_pid_p, vav_01_pid_i, vav_01_pid_d, vav_01_pid_e0, vav_01_pid_es)
     '''
     # error
     pid_e = indoor_temp - indoor_temp_set
@@ -365,14 +364,18 @@ for step in range(1440):
     p_error0 = p_error
     '''
 
+    # ## 制御
     # fan_inv_pid
     # pid 控制策略有问题
-    [fan_inv, fan_inv_pid_e0, fan_inv_pid_es] = pid_control(
-        vav_schedule_min[step], p_end, p_end_setpoint, fan_inv, fan_inv_p, fan_inv_i, fan_inv_d,
-        fan_inv_pid_e0, fan_inv_pid_es, control_max=1, control_min=0, tf=-1)
+    [fan_inv, fan_inv_pid_e0, fan_inv_pid_es] = pid_control(vav_schedule_min[step], p_end, p_end_setpoint,
+                       fan_inv, fan_inv_p, fan_inv_i, fan_inv_d, fan_inv_pid_e0, fan_inv_pid_es, control_min=0.5, tf=-1)
 
     # ## duct pressure balance
     # cv = g / √pδp /cv_k
+
+    # 补充
+#    if vav_cv == 1:
+#        fan_inv += 0.1
 
     if vav_cv == 0 or vav_schedule_min[step] == 0:
         supply_air_G = 0
@@ -389,15 +392,17 @@ for step in range(1440):
     # print(g0,p_duct,p_vav,p_end)
     # supply_air_G = g0
 
+
     print(p_end,indoor_temp,supply_air_G,fan_inv,vav_cv)
 
     # print(indoor_temp)
 
     # ## TO DO LIST
-    # room *3 邻室传热 + 风管平衡要解多元方程组
+    # room *3 邻室传热 + 风管平衡要解多元方程组 bingo
     # p reset 变压力控制
     # t reset 送风温度重置 (重要！！！ei)
     # lim sennsei hiteijyou 林先生的非定常计算法
     # temp without vav 自然室温计算 放在excle
     # 1分钟的时间间隔 室温来不及变化 非定常 非均一 怎么考虑
     # 把房间 vav ahu 风管 做成class 面向对象
+

@@ -307,6 +307,7 @@ for step in range(1440):
     load_sum = load_wall + load_sun + load_window + load_wall_indoor + load_human + load_equipment + load_light
 
     # print(load_wall,load_sun,load_window,load_wall_indoor,load_human,load_equipment,load_light,load_sum)
+    # print(load_sum)
 
     # ## room_air_temp
     # vav (no control) control later
@@ -370,6 +371,7 @@ for step in range(1440):
     [fan_inv, fan_inv_pid_e0, fan_inv_pid_es] = pid_control(vav_schedule_min[step], p_end, p_end_setpoint,
                        fan_inv, fan_inv_p, fan_inv_i, fan_inv_d, fan_inv_pid_e0, fan_inv_pid_es, control_min=0.5, tf=-1)
 
+
     # ## duct pressure balance
     # cv = g / √pδp /cv_k
 
@@ -393,7 +395,7 @@ for step in range(1440):
     # supply_air_G = g0
 
 
-    print(p_end,indoor_temp,supply_air_G,fan_inv,vav_cv)
+    # print(p_end,indoor_temp,supply_air_G,fan_inv,vav_cv)
 
     # print(indoor_temp)
 

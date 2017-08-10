@@ -318,7 +318,7 @@ for step in range(1440):
                                                                         indoor_temp_set, vav_box_01_cv,
                                                                         vav_box_01_pid_p, vav_box_01_pid_i,
                                                                         vav_box_01_pid_d, vav_box_01_pid_e0,
-                                                                        vav_box_01_pid_es, control_min=0.3)
+                                                                        vav_box_01_pid_es, control_min=0.1)
     '''
     # INV控制末端压力 ##
     [ahu_01_fan_inv, ahu_01_fan_inv_pid_e0, ahu_01_fan_inv_pid_es] = pid_control(schedule_min[step], end_dp,
@@ -346,17 +346,9 @@ for step in range(1440):
                                                                                  tf=-1)
 
     # INV控制流量
-
-
     print(load_wall, sum(load_window_tou), load_window_den, load_human, load_light, load_equipment,
-          load_sum, indoor_temp, vav_box_01_cv, ahu_01_fan_inv, supply_air_P)
+          load_sum, indoor_temp, out_temp_min[step], vav_box_01_cv, ahu_01_fan_inv, supply_air_P)
     # 循环结束
-
-
-
-
-
-
 
 
 

@@ -327,6 +327,14 @@ for step in range(1440):
                                                                                  ahu_01_pid_d, ahu_01_fan_inv_pid_e0,
                                                                                  ahu_01_fan_inv_pid_es, control_min=0.3,
                                                                                  tf=-1)
+  
+    # INV控制出口压力 阀门全开，压力设定++， 阀门最小，压力设定--
+    if vav_box_01_cv > 0.9:
+        supply_air_P_set_point += 1
+    elif vav_box_01_cv < 0.5:
+        supply_air_P_set_point -= 1
+    else:
+        supply_air_P_set_point = 80
     '''
 
     # INV控制出口压力
@@ -336,6 +344,9 @@ for step in range(1440):
                                                                                  ahu_01_pid_d, ahu_01_fan_inv_pid_e0,
                                                                                  ahu_01_fan_inv_pid_es, control_min=0.3,
                                                                                  tf=-1)
+
+    # INV控制流量
+
 
     print(load_wall, sum(load_window_tou), load_window_den, load_human, load_light, load_equipment,
           load_sum, indoor_temp, vav_box_01_cv, ahu_01_fan_inv, supply_air_P)

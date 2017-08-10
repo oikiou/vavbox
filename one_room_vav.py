@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 # ## 说明
 # 只有一个房间 一台VAV 一台AHU (之后考虑3个房间的3台VAV)
-# 房间大小 8m*8m 高度3m 室内设计温度26摄氏度 日均负荷100w/m2 峰值负荷180w/m2 日均整体负荷6.4kw，设计负荷11.52kw
+# 房间大小 8m*8m 高度3m 室内设计温度26摄氏度 日均负荷100w/m2 峰值负荷150w/m2 日均整体负荷6.4kw，设计负荷9.6kw
 # 设备选用一台VAV 额定容量10kw 送风温度18摄氏度 温差8摄氏度
 # VAV选型 Q=cm*dt, m=10/1.005/8=1.244[kg/s], rou=1.213, V=m/rou=1.025[m3/s]=3692[m3/h] 取整到4000[m3/h]
 # VAV能力 Q=4000*1.213*8*1.005/3600=10.8kw
@@ -43,7 +43,8 @@ import matplotlib.pyplot as plt
 # input
 # 外气参数
 indoor_temp_set = 26
-out_temp = [22, 23, 23, 25, 26, 28, 28, 28, 29, 29, 30, 31, 31, 32, 32, 31, 30, 29, 29, 29, 28, 26, 24, 20]
+out_temp = [29.1, 28.9, 28.6, 28.4, 28.3, 28.7, 29.5, 30.5, 31.5, 32.3, 33.1, 33.8, 34.3, 34.6, 34.5, 34.0, 33.8,
+            33.1, 32.2, 31.3, 30.7, 30.2, 29.8, 29.6]
 # 日照得热(太阳辐射强度)(设计日)
 sun_south = [0, 0, 0, 0, 0, 18, 50, 79, 134, 217, 273, 291, 273, 217, 134, 79, 50, 18, 0, 0, 0, 0, 0, 0]
 sun_west = [0, 0, 0, 0, 0, 18, 50, 79, 102, 119, 130, 133, 336, 505, 615, 640, 558, 353, 0, 0, 0, 0, 0, 0]
@@ -53,7 +54,7 @@ sun_h = [0, 0, 0, 0, 0, 88, 276, 487, 681, 836, 933, 967, 933, 836, 681, 487, 27
 # 内墙绝热，屋顶地板绝热
 # 尺寸形状参数
 out_wall_length = [8, 8, 0, 0]
-out_window_length = [4, 4, 0, 0]
+out_window_length = [6, 6, 0, 0]
 window_height = 2
 wall_height = 3
 ground_area = 64
@@ -73,7 +74,7 @@ air_rou = 1.2
 # 内扰
 human_heat = 80  # [W/人]
 human_count = 6
-light_heat = 15  # [W/m2]
+light_heat = 18  # [W/m2]
 equipment_heat = 20  # [W/m2]
 # 作息
 schedule = [0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0]
@@ -89,6 +90,8 @@ ahu_01_pid_p = 0.01
 ahu_01_pid_i = 0.0001
 ahu_01_pid_d = 0
 # 配管特性
+end_p_set_point = 15
+supply_air_P_set_point = 80
 duct_s1 = 0.000003125
 duct_se1 = 0.000001875
 vav_box_01_cv_k = 16000
@@ -164,12 +167,12 @@ def cal_g1_to_p0(g, s, se, cv, k):
 # 压差算支管流量
 def cal_p0_to_g2(p0, s, se, cv, k):
     return math.sqrt((2 * p0 * s + se * p0 + 1 / cv / cv / k - math.sqrt((2 * p0 * s + se * p0 + 1 / cv / cv / k) *
-        (2 * p0 * s + se * p0 + 1 / cv / cv / k) - 4 * (s * s + s * se) * p0 * p0))/(2 * (s * s + s * se)))
+         (2 * p0 * s + se * p0 + 1 / cv / cv / k) - 4 * (s * s + s * se) * p0 * p0))/(2 * (s * s + s * se)))
 
 
 # 风机特性算压力
 def f_gp_fan(g):
-    return g_to_p_fan(g, fan_inv, fan_1_performance)
+    return g_to_p_fan(g, ahu_01_fan_inv, fan_1_performance)
 
 
 # 配管特性算压力
@@ -213,7 +216,7 @@ def one_to_sixty_plus(one, begin=0):
 
 # 进行分时
 # temp hour in min
-out_temp_min = one_in_sixty(out_temp, 20)
+out_temp_min = one_in_sixty(out_temp, out_temp[0])
 # sun hour to min
 sun_east_min = one_in_sixty(sun_east)
 sun_south_min = one_in_sixty(sun_south)
@@ -227,11 +230,11 @@ light_schedule_min = one_in_sixty(light_schedule)
 
 # pid control
 # init e0,es, in ct0 ta0, out ct1
-def pid_control(schedule, target, setpoint, control0, p, i, d, e0, es, control_max=1.0, control_min=0.0, tf=1):
-    if schedule == 0:
+def pid_control(sche, target, set_point, control0, p, i, d, e0, es, control_max=1, control_min=0, tf=1):
+    if sche == 0:
         return 0, 0, 0
     else:
-        e = target - setpoint
+        e = target - set_point
         de = e - e0
         if de * e <= 0:
             de = 0
@@ -242,19 +245,24 @@ def pid_control(schedule, target, setpoint, control0, p, i, d, e0, es, control_m
 # 初始化 init
 indoor_temp = 26
 supply_air_temp = 18
-wall_t0 = [26] * wall_n
+wall_t0 = [np.linspace(indoor_temp, out_temp_min[0], wall_n)] * 4
 vav_box_01_cv = 0
 vav_box_01_pid_e0 = 0
 vav_box_01_pid_es = 0
-end_p_set_point = 15
 ahu_01_fan_inv = 0
 ahu_01_fan_inv_pid_e0 = 0
 ahu_01_fan_inv_pid_es = 0
 
 # 循环开始
+# ## 计算流程
+# 前一时刻 VAV开度 INV开度
+# 当前时刻 管路平衡 计算 送风量 末端压力 制冷能力
+# 当前时刻 有限差分法 计算 室内负荷 计算 室内温度
+# PID控制 末端压力和设定压力 控 INV开度 室内温度和设定温度 控 VAV开度
+# 下一时刻
 for step in range(1440):
     # 管路平衡
-    if schedule_min[step] == 0:
+    if vav_box_01_cv == 0 or schedule_min[step] == 0:
         supply_air_G = 0
         supply_air_P = 0
         vav_box_01_dp = 0
@@ -264,31 +272,74 @@ for step in range(1440):
         vav_box_01_dp = cal_g1_to_p0(supply_air_G, duct_s1, duct_se1, vav_box_01_cv, vav_box_01_cv_k)
         end_dp = cal_p_end(supply_air_G, vav_box_01_cv, vav_box_01_cv_k, vav_box_01_dp)
 
-    # 制冷能力
+    # 制冷能力 W
     vav_box_01_capacity = (indoor_temp - supply_air_temp) * supply_air_G * air_c * air_rou / 3.6 * schedule_min[step]
 
-    # 负荷计算
+    # 负荷计算 W
     # sun
     sun_min = [sun_east_min[step], sun_south_min[step],
                sun_west_min[step], sun_north_min[step]]
     load_window_tou = [out_window_area[i] * sun_min[i] * window_tao for i in range(4)]
     load_window_den = (out_temp_min[step] - indoor_temp) * window_k * sum(out_window_area)
-    load_window = load_window_tou + load_window_den
+    load_window = sum(load_window_tou) + load_window_den
 
-    # 墙吸收 SAT
-    # SAT也分方位，差分法也分方位
+    # wall
+    wall_sat = [out_temp_min[step] + sun_min[i] * wall_alpha / wall_h_outside for i in range(4)]
+    wall_t1 = [[0] * wall_n] * 4
+    for orientation in range(4):
+        wall_t1[orientation][0] = k_to_k1_side(wall_t0[orientation][0], wall_t0[orientation][1],
+                                               indoor_temp, wall_Fo, wall_Bi_inside)
+        wall_t1[orientation][wall_n-1] = k_to_k1_side(wall_t0[orientation][wall_n-1], wall_t0[orientation][wall_n-2],
+                                                      wall_sat[orientation], wall_Fo, wall_Bi_outside)
+        for i in range(wall_n - 2):
+            wall_t1[orientation][i+1] = k_to_k1_mid(wall_t0[orientation][i+1], wall_t0[orientation][i],
+                                                    wall_t0[orientation][i+2])
+        wall_t0[orientation] = wall_t1[orientation]
+    load_wall = sum([wall_h_inside * (wall_t1[orientation][0] - indoor_temp) * out_wall_area[orientation]
+                     for orientation in range(4)])
 
-
-    # 窗传热
-    # 墙差分
     # 内扰
+    load_human = human_count * human_heat * schedule_min[step]
+    load_light = light_heat * light_schedule_min[step] * ground_area
+    load_equipment = equipment_heat * schedule_min[step] * ground_area
 
+    # load_sum
+    load_sum = load_wall + load_window + load_human + load_light + load_equipment
 
+    # indoor_temp
+    delta_load = load_sum - vav_box_01_capacity
+    # 热容只考虑空气，不考虑房间内其他家具
+    delta_temp = delta_load / air_rou / air_c / ground_area / wall_height / 1000 * 60
+    indoor_temp = indoor_temp + delta_temp
 
+    # PID控制
+    # 风阀控制
+    [vav_box_01_cv, vav_box_01_pid_e0, vav_box_01_pid_es] = pid_control(schedule_min[step], indoor_temp,
+                                                                        indoor_temp_set, vav_box_01_cv,
+                                                                        vav_box_01_pid_p, vav_box_01_pid_i,
+                                                                        vav_box_01_pid_d, vav_box_01_pid_e0,
+                                                                        vav_box_01_pid_es, control_min=0.3)
+    '''
+    # INV控制末端压力 ##
+    [ahu_01_fan_inv, ahu_01_fan_inv_pid_e0, ahu_01_fan_inv_pid_es] = pid_control(schedule_min[step], end_dp,
+                                                                                 end_p_set_point, ahu_01_fan_inv,
+                                                                                 ahu_01_pid_p, ahu_01_pid_i,
+                                                                                 ahu_01_pid_d, ahu_01_fan_inv_pid_e0,
+                                                                                 ahu_01_fan_inv_pid_es, control_min=0.3,
+                                                                                 tf=-1)
+    '''
 
+    # INV控制出口压力
+    [ahu_01_fan_inv, ahu_01_fan_inv_pid_e0, ahu_01_fan_inv_pid_es] = pid_control(schedule_min[step], supply_air_P,
+                                                                                 supply_air_P_set_point, ahu_01_fan_inv,
+                                                                                 ahu_01_pid_p, ahu_01_pid_i,
+                                                                                 ahu_01_pid_d, ahu_01_fan_inv_pid_e0,
+                                                                                 ahu_01_fan_inv_pid_es, control_min=0.3,
+                                                                                 tf=-1)
 
-
-
+    print(load_wall, sum(load_window_tou), load_window_den, load_human, load_light, load_equipment,
+          load_sum, indoor_temp, vav_box_01_cv, ahu_01_fan_inv, supply_air_P)
+    # 循环结束
 
 
 
